@@ -1,1 +1,3 @@
+# Jupyter Lab configuration
+START_JUPYTER = true
 JUPYTER_PORT = 8888

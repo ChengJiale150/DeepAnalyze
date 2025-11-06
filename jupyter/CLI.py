@@ -3,6 +3,7 @@ import signal
 import subprocess
 import threading
 import time
+import asyncio
 from server import jupyter_process
 
 def signal_handler(sig, frame):
@@ -23,7 +24,8 @@ def interactive_terminal():
     while True:
         try:
             user_input = input(">>> ")
-            print(f"You said: {user_input}")
+            if user_input:  # If user inputs any non-empty text
+                print("Running test() function...")
         except EOFError:
             print("\nDetected EOF, exiting terminal...")
             break
@@ -31,9 +33,10 @@ def interactive_terminal():
             continue
 
 if __name__ == "__main__":
-    from server import jupyter_port
-    print("Waiting for Jupyter Lab server to start...")
-    time.sleep(10)
+    from server import jupyter_port, start_jupyter
+    if start_jupyter:
+        print("Waiting for Jupyter Lab server to start...")
+        time.sleep(10)
     print(f"Jupyter Lab server is running on http://localhost:{jupyter_port}")
 
     signal.signal(signal.SIGINT, signal_handler)
