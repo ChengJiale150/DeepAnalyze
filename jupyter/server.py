@@ -66,8 +66,9 @@ if start_jupyter:
 
 async def bot_stream(messages):
     """
-    Bot streaming function that processes messages and executes code in Jupyter notebook.
+    Bot function that processes messages and executes code in Jupyter notebook.
     This is adapted from demo/backend.py but modified to work with Jupyter notebook.
+    Returns the complete response in OpenAI format as a dictionary array.
     """
     # Connect to notebook
     mcp_client = await connect_notebook(jupyter_port)
@@ -86,15 +87,13 @@ async def bot_stream(messages):
         else:
             messages[-1]["content"] = f"# Instruction\n{user_message}"
     
-    assistant_reply = ""
     finished = False
-    
     while not finished:
         response = client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "DeepAnalyze-8B"),
             messages=messages,
             temperature=0.4,
-            stream=True,
+            stream=False,  # Changed to False for non-streaming
             extra_body={
                 "add_generation_prompt": False,
                 "stop_token_ids": [151676, 151645],
@@ -102,23 +101,27 @@ async def bot_stream(messages):
             },
         )
         
-        cur_res = ""
-        for chunk in response:
-            if chunk.choices and chunk.choices[0].delta.content is not None:
-                delta = chunk.choices[0].delta.content
-                cur_res += delta
-                assistant_reply += delta
-                yield assistant_reply
-            if "</Answer>" in cur_res:
-                finished = True
-                break
-                
-        if chunk.choices[0].finish_reason == "stop" and not finished:
+        # Get the complete response
+        cur_res = response.choices[0].message.content
+
+        # Check if finished
+        if "</Answer>" in cur_res:
+            messages.append({"role": "assistant", "content": cur_res})
+            finished = True
+            
+        if response.choices[0].finish_reason == "stop" and not finished:
             if not cur_res.endswith("</Code>"):
                 cur_res += "</Code>"
-                assistant_reply += "</Code>"
-            yield assistant_reply
             
+        # Process other tags (Analyze, Understand, Answer) first, before Code
+        # Use a single regex to match all tags in order
+        all_tags_pattern = r"<(Analyze|Understand|Answer)>(.*?)</\1>"
+        tag_matches = re.finditer(all_tags_pattern, cur_res, re.DOTALL)
+        for match in tag_matches:
+            tag_content = match.group(2).strip()
+            await insert_cell(mcp_client, -1, cell_source=tag_content, cell_type="markdown")
+            
+        # Then process Code tag after other tags
         if "</Code>" in cur_res and not finished:
             messages.append({"role": "assistant", "content": cur_res})
             
@@ -131,25 +134,9 @@ async def bot_stream(messages):
                 
                 # Execute code in Jupyter notebook
                 exe_output = await append_execute_cell(mcp_client, code_str)
-                exe_str = f"\n<Execute>\n```\n{exe_output}\n```\n</Execute>\n"
-                assistant_reply += exe_str
-                yield assistant_reply
                 messages.append({"role": "execute", "content": exe_output})
-        
-        # Process other tags (Analyze, Understand, Answer) and add them as markdown cells
-        for tag in ["Analyze", "Understand", "Answer"]:
-            tag_pattern = f"<{tag}>(.*?)</{tag}>"
-            tag_match = re.search(tag_pattern, cur_res, re.DOTALL)
-            if tag_match:
-                tag_content = tag_match.group(1).strip()
-                await insert_cell(mcp_client, -1, cell_source=tag_content, cell_type="markdown")
-                
-                # Add to assistant reply for display
-                md_str = f"\n<{tag}>\n{tag_content}\n</{tag}>\n"
-                assistant_reply += md_str
-                yield assistant_reply
     
-    yield assistant_reply
+    return messages
 
 
 

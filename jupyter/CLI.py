@@ -1,10 +1,9 @@
 import sys
 import signal
 import subprocess
-import threading
 import time
 import asyncio
-from server import jupyter_process
+from server import jupyter_process, bot_stream
 
 def signal_handler(sig, frame):
     """Process Ctrl+C signal to stop terminal and Jupyter process"""
@@ -17,20 +16,40 @@ def signal_handler(sig, frame):
             jupyter_process.kill()
     sys.exit(0)
 
-def interactive_terminal():
-    """Interactive terminal function to repeat user input"""
-    print("Interactive terminal started. Input will be repeated. Press Ctrl+C to exit.")
+async def interactive_chat():
+    """Interactive chat function to handle user input and bot responses"""
+    print("Interactive chat started. Type your messages and press Enter to send.")
+    print("Type 'exit', 'quit' or press Ctrl+C to exit.")
+    print("=" * 50)
+    
+    messages = []
     
     while True:
         try:
             user_input = input(">>> ")
-            if user_input:  # If user inputs any non-empty text
-                print("Running test() function...")
+            if user_input.lower() in ['exit', 'quit']:
+                print("Exiting chat...")
+                break
+                
+            if not user_input.strip():
+                continue
+                
+            # Add user message to the conversation
+            messages.append({"role": "user", "content": user_input})
+            messages = await bot_stream(messages)
+            print("Successfully received bot response.")
+            # print(messages)
+            print("-" * 50)
+            
         except EOFError:
-            print("\nDetected EOF, exiting terminal...")
+            print("\nDetected EOF, exiting chat...")
             break
         except KeyboardInterrupt:
-            continue
+            print("\nKeyboard interrupt detected, exiting chat...")
+            break
+        except Exception as e:
+            print(f"\nError occurred: {e}")
+            break
 
 if __name__ == "__main__":
     from server import jupyter_port, start_jupyter
@@ -41,14 +60,9 @@ if __name__ == "__main__":
 
     signal.signal(signal.SIGINT, signal_handler)
     
-    # Open interactive terminal in a new thread
-    terminal_thread = threading.Thread(target=interactive_terminal)
-    terminal_thread.daemon = True
-    terminal_thread.start()
-    
-    # Wait for the terminal thread to finish (this should never happen)
+    # Run the interactive chat
     try:
-        terminal_thread.join()
+        asyncio.run(interactive_chat())
     except KeyboardInterrupt:
         pass
     
