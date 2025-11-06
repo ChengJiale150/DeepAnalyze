@@ -47,14 +47,14 @@ jupyter_process = None
 if start_jupyter:
     cmd = [
         "uv", "run", "jupyter", "lab",
-        "--ServerApp.root_dir", workspace_dir.as_posix(),
         "--port", str(jupyter_port),
     ]
     jupyter_process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True
+        text=True,
+        cwd=workspace_dir.as_posix()
     )
     def start():
         for line in jupyter_process.stdout:
